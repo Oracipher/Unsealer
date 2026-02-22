@@ -1,103 +1,101 @@
-# src\unsealer\google\decrypter.py
-
-
-
 import base64
-import binascii
 from urllib.parse import urlparse, parse_qs
 from typing import List, Dict, Any
 
-from . import google_auth_pb2
+from google.protobuf import descriptor_pb2
+from google.protobuf import message_factory
+from google.protobuf import descriptor_pool
 
+def _get_dynamic_payload_class():
+    """
+    基于最新的 google_auth.proto 规范动态构建消息类。
+    不再依赖外部生成的 _pb2.py 文件，确保跨环境兼容性。
+    """
+    pool = descriptor_pool.Default()
+    try:
+        return message_factory.GetMessageClass(pool.FindMessageTypeByName('googleauth.MigrationPayload'))
+    except KeyError:
+        pass
+
+    # 手动定义描述符，匹配 proto3 规范
+    file_proto = descriptor_pb2.FileDescriptorProto()
+    file_proto.name = "google_auth.proto"
+    file_descriptor_proto = file_proto
+    file_descriptor_proto.package = "googleauth"
+    file_descriptor_proto.syntax = "proto3"
+
+    # 定义 MigrationPayload 消息
+    msg = file_descriptor_proto.message_type.add()
+    msg.name = "MigrationPayload"
+
+    # 定义内部 OtpParameters 消息
+    inner_msg = msg.nested_type.add()
+    inner_msg.name = "OtpParameters"
+    
+    # 字段定义 (名称, 编号, 类型) - 类型参考: 12=Bytes, 9=String, 14=Enum, 3=Int64
+    fields = [
+        ("secret", 1, 12), ("name", 2, 9), ("issuer", 3, 9),
+        ("algorithm", 4, 14), ("digits", 5, 14), ("type", 6, 14),
+        ("counter", 7, 3), ("unique_id", 8, 9)
+    ]
+    for f_name, f_num, f_type in fields:
+        f = inner_msg.field.add()
+        f.name, f.number, f.type = f_name, f_num, f_type
+
+    # MigrationPayload 主字段
+    f = msg.field.add()
+    f.name, f.number, f.label, f.type, f.type_name = "otp_parameters", 1, 3, 11, ".googleauth.MigrationPayload.OtpParameters"
+    
+    for i, (f_name, f_type) in enumerate([("version", 5), ("batch_size", 5), ("batch_index", 5), ("batch_id", 5)], 2):
+        f = msg.field.add()
+        f.name, f.number, f.label, f.type = f_name, i, 1, f_type
+
+    pool.Add(file_descriptor_proto)
+    return message_factory.GetMessageClass(pool.FindMessageTypeByName('googleauth.MigrationPayload'))
 
 def decrypt_google_auth_uri(uri: str) -> List[Dict[str, Any]]:
     """
-    解码Google Authenticator导出的URI，并提取所有2FA账户信息
-    Args:
-        uri: 从Google Authenticator二维码扫描得到的完整 'otpauth-migration://...' 字符串
-    Returns:
-        一个包含字典的列表，每个字典代表一个2FA账户，包含
-        issuer, name, 和最重要的 totp_secret (Base32编码)
-    Raises:
-        ValueError: 如果URI无效、数据损坏或解析过程中出现任何错误
+    解析 otpauth-migration URI 并提取 2FA 账户
     """
-    try:
-        # 1. URI解析与验证
-        parsed_uri = urlparse(uri)
-        if parsed_uri.scheme != 'otpauth-migration' or parsed_uri.netloc != 'offline':
-            raise ValueError("无效的URI格式，必须以 'otpauth-migration://offline' 开头。")
+    parsed_uri = urlparse(uri)
+    if parsed_uri.scheme != 'otpauth-migration':
+        raise ValueError("无效的 URI 协议，请提供以 'otpauth-migration://' 开头的链接。")
 
-        query_params = parse_qs(parsed_uri.query)
-        if 'data' not in query_params:
-            raise ValueError("URI中未找到 'data' 参数。")
-        
-        encoded_data = query_params['data'][0]
+    query_params = parse_qs(parsed_uri.query)
+    data_list = query_params.get('data')
+    if not data_list:
+        raise ValueError("URI 中缺失关键的 'data' 参数。")
 
-        # 2. Base64解码 -> 获取二进制Protobuf数据
-        padding_needed = len(encoded_data) % 4
-        if padding_needed:
-            encoded_data += '=' * (4 - padding_needed)
-        
-        binary_data = base64.b64decode(encoded_data)
-
-        # 3. Protocol Buffers (Protobuf) 反序列化
-        payload = google_auth_pb2.MigrationPayload()
-        payload.ParseFromString(binary_data)
-
-        # 4. 账户数据处理与转换
-        accounts = []
-        for otp_param in payload.otp_parameters:
-            # 将Protobuf中的原始二进制密钥(secret)转换为标准的Base32字符串
-            secret_bytes = otp_param.secret
-            # 使用标准的b32encode，并移除末尾的填充'='，这是TOTP密钥的常见格式
-            totp_secret = base64.b32encode(secret_bytes).decode('utf-8').rstrip('=')
-
-            # 将Protobuf的枚举值转换为人类可读的字符串，便于后续使用
-            algo_map = {0: "SHA1", 1: "SHA1", 2: "SHA256", 4: "MD5"}
-            digit_map = {0: 6, 1: 6, 2: 8}
-            type_map = {0: "TOTP", 2: "TOTP"}
-
-            account = {
-                "issuer": otp_param.issuer,
-                "name": otp_param.name,
-                "totp_secret": totp_secret,
-                "algorithm": algo_map.get(otp_param.algorithm, "UNKNOWN"),
-                "digits": digit_map.get(otp_param.digits, 6),
-                "type": type_map.get(otp_param.type, "UNKNOWN"),
-            }
-            accounts.append(account)
-
-        if not accounts:
-            raise ValueError("解密成功，但未在数据中找到任何账户信息。")
-
-        return accounts
-
-    except (binascii.Error, ValueError) as e:
-        # 捕获Base64解码错误或我们自己抛出的ValueError
-        raise ValueError(f"解码失败: {e}")
-    except Exception as e:
-        # 捕获所有其他异常，如Protobuf解析错误
-        raise ValueError(f"处理Google Authenticator数据时发生未知错误。数据可能已损坏或格式不兼容。错误: {e}")
-
-
-# 如果直接运行此文件，可以进行快速测试
-if __name__ == '__main__':
-    # 提供一个示例URI
-    TEST_URI = "otpauth-migration://offline?data=CjEKCkhlbGxvId6tvu8SGEV4YW1wbGU6YWxpY2VAZ21haWwuY29tGAEgASgLMgtFeGFtcGxlOkNvZGUaGEV4YW1wbGU6YWxpY2VAZ21haWwuY29tIAEoATACEAEYASAA"
+    # 处理 Base64
+    encoded_data = data_list[0]
+    padding_needed = len(encoded_data) % 4
+    if padding_needed:
+        encoded_data += '=' * (4 - padding_needed)
     
-    print("--- 正在测试 Google Authenticator 解密模块 ---")
-    
-    try:
-        extracted_accounts = decrypt_google_auth_uri(TEST_URI)
-        print(f"\n[✓] 解密成功！找到 {len(extracted_accounts)} 个账户:")
-        
-        for i, acc in enumerate(extracted_accounts, 1):
-            print(f"\n--- 账户 #{i} ---")
-            print(f"  服务商 (Issuer): {acc['issuer']}")
-            print(f"  账户名 (Name):    {acc['name']}")
-            print(f"  TOTP 密钥:       {acc['totp_secret']}  <-- 这是您需要备份的密钥!")
-            print(f"  算法:            {acc['algorithm']}")
-            print(f"  位数:            {acc['digits']}")
+    binary_data = base64.b64decode(encoded_data)
 
-    except ValueError as e:
-        print(f"\n[✗] 测试失败: {e}")
+    # 动态解析
+    PayloadClass = _get_dynamic_payload_class()
+    payload = PayloadClass()
+    payload.ParseFromString(binary_data)
+
+    # 映射表 (基于 google_auth.proto)
+    ALGO_MAP = {0: "UNSPECIFIED", 1: "SHA1", 2: "SHA256", 3: "SHA512", 4: "MD5"}
+    DIGIT_MAP = {0: "UNSPECIFIED", 1: "6", 2: "8", 3: "7"}
+    TYPE_MAP = {0: "UNSPECIFIED", 1: "HOTP", 2: "TOTP"}
+
+    accounts = []
+    for otp in payload.otp_parameters:
+        # 将原始二进制密钥转换为通用的 Base32 编码
+        b32_secret = base64.b32encode(otp.secret).decode('utf-8').rstrip('=')
+        
+        accounts.append({
+            "issuer": otp.issuer or "Unknown Issuer",
+            "name": otp.name or "Unknown Account",
+            "totp_secret": b32_secret,
+            "algorithm": ALGO_MAP.get(otp.algorithm, "SHA1"),
+            "digits": DIGIT_MAP.get(otp.digits, "6"),
+            "type": TYPE_MAP.get(otp.type, "TOTP")
+        })
+
+    return accounts

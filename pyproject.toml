@@ -27,7 +27,7 @@ dependencies = [
     "pycryptodome>=3.15.0",
     "rich",
     "pyfiglet",
-    "protobuf",
+    "protobuf>=4.21.0",
 ]
 
 [project.scripts]

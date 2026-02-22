@@ -1,0 +1,2 @@
+[console_scripts]
+unsealer = unsealer.__main__:main
