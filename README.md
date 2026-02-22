@@ -24,14 +24,14 @@ Whether you're migrating to a new password manager, creating a secure offline ba
 
 ## Core Features
 
--   🔐 **100% Offline & Secure**: Your master password and decrypted data never leave your computer.
--   📄 **Comprehensive Data Export**: Go beyond just passwords. Unsealer intelligently parses and exports all major data categories from your backup.
--   ✨ **Multiple Versatile Formats**: Export your data as **CSV** for spreadsheets, plain **TXT** for easy reading, or structured **Markdown** for reports.
--   🛡️ **Security-First Design**: Enforces a secure, interactive password prompt that prevents your master password from being saved in your shell history.
--   👀 **Instant Data Preview**: Quickly inspect the contents of your backup directly in your terminal without writing any files to disk.
--   ⚙️ **Robust and User-Friendly**: A polished CLI with clear instructions, progress indicators, and helpful error messages.
--   🌍 **Cross-Platform**: Fully compatible with Windows, macOS, and Linux—anywhere Python 3.7+ is installed.
--   📖 **Transparent & Auditable**: The source code is open for anyone to inspect and verify its security and functionality.
+-    **100% Offline & Secure**: Your master password and decrypted data never leave your computer.
+-    **Comprehensive Data Export**: Go beyond just passwords. Unsealer intelligently parses and exports all major data categories from your backup.
+-    **Multiple Versatile Formats**: Export your data as **CSV** for spreadsheets, plain **TXT** for easy reading, or structured **Markdown** for reports.
+-    **Security-First Design**: Enforces a secure, interactive password prompt that prevents your master password from being saved in your shell history.
+-    **Instant Data Preview**: Quickly inspect the contents of your backup directly in your terminal without writing any files to disk.
+-    **Robust and User-Friendly**: A polished CLI with clear instructions, progress indicators, and helpful error messages.
+-    **Cross-Platform**: Fully compatible with Windows, macOS, and Linux—anywhere Python 3.7+ is installed.
+-    **Transparent & Auditable**: The source code is open for anyone to inspect and verify its security and functionality.
 
 ---
 
@@ -102,18 +102,18 @@ unsealer <input_file> [password] [options]
 
 **Arguments:**
 
-| Argument       | Description                                                                                                                              |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `input_file`   | **(Required)** The file path to your `.spass` backup.                                                                                    |
-| `password`     | **(Optional)** Your Samsung account master password. If omitted, you will be prompted securely. **(See warning below)**                    |
+| Argument       | Description                                                                                                            |
+| :------------: | :--------------------------------------------------------------------------------------------------------------------- |
+| `input_file`   | **(Required)** The file path to your `.spass` backup.                                                                  |
+| `password`     | **(Optional)** Your Samsung account master password. If omitted, you will be prompted securely. **(See warning below)**|
 
 **Options:**
 
-| Flag        | Long Version | Description                                                                                                |
-| ----------- | ------------ | ---------------------------------------------------------------------------------------------------------- |
-| `-f`, `-F`  | `--format`   | The output format. Choices: `csv`, `txt`, `md`. **Default: `csv`**.                                          |
-| `-o`, `-O`  | `--output`   | The destination path for the output file. Defaults to the input filename with the new extension.           |
-|             | `--preview`  | Displays the first 5 entries as a table in the terminal instead of saving a file.                          |
+| Flag        | Long Version | Description                                                                                     |
+| :---------: | :----------: | :---------------------------------------------------------------------------------------------- |
+| `-f`, `-F`  | `--format`   | The output format. Choices: `csv`, `txt`, `md`. **Default: `csv`**.                             |
+| `-o`, `-O`  | `--output`   | The destination path for the output file. Defaults to the input filename with the new extension.|
+|             | `--preview`  | Displays the first 5 entries as a table in the terminal instead of saving a file.               |
 
 
 > [!WARNING]
