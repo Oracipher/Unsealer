@@ -28,7 +28,11 @@ dependencies = [
     "rich",
     "pyfiglet",
     "protobuf>=4.21.0",
+    "pyzbar",
+    "pillow",
 ]
+# linux用户可能需要安装系统库
+# sudo apt-get install libzbar0
 
 [project.scripts]
 unsealer = "unsealer.__main__:main"
