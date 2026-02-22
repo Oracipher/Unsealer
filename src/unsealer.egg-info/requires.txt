@@ -2,6 +2,8 @@ pycryptodome>=3.15.0
 rich
 pyfiglet
 protobuf>=4.21.0
+pyzbar
+pillow
 
 [test]
 pytest

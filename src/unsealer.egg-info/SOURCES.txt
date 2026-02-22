@@ -12,6 +12,7 @@ src/unsealer.egg-info/requires.txt
 src/unsealer.egg-info/top_level.txt
 src/unsealer/google/cli.py
 src/unsealer/google/decrypter.py
+src/unsealer/google/scanner.py
 src/unsealer/samsung/__init__.py
 src/unsealer/samsung/cli.py
 src/unsealer/samsung/decrypter.py

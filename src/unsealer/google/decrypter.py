@@ -2,146 +2,93 @@ import base64
 from urllib.parse import urlparse, parse_qs
 from typing import List, Dict, Any
 
-from google.protobuf import descriptor_pb2
-from google.protobuf import message_factory
-from google.protobuf import descriptor_pool
+def _parse_varint(data, pos):
+    """解析 Protobuf 的 Varint 编码"""
+    res = 0
+    shift = 0
+    while True:
+        b = data[pos]
+        res |= (b & 0x7f) << shift
+        pos += 1
+        if not (b & 0x80):
+            return res, pos
+        shift += 7
 
-def _get_dynamic_payload_class():
-    """
-    动态构建 MigrationPayload 类。
-    将枚举字段声明为 Int32，以绕过 Python 3.12 对枚举定义的严格校验，
-    同时保持二进制层面的完全兼容。
-    """
-    pool = descriptor_pool.Default()
-    try:
-        return message_factory.GetMessageClass(pool.FindMessageTypeByName('googleauth.MigrationPayload'))
-    except KeyError:
-        pass
-
-    file_descriptor_proto = descriptor_pb2.FileDescriptorProto()
-    file_descriptor_proto.name = "google_auth.proto"
-    file_descriptor_proto.package = "googleauth"
-    file_descriptor_proto.syntax = "proto3"
-
-    # 1. 定义 MigrationPayload 消息
-    msg = file_descriptor_proto.message_type.add()
-    msg.name = "MigrationPayload"
-
-    # 2. 定义内部 OtpParameters 消息
-    inner_msg = msg.nested_type.add()
-    inner_msg.name = "OtpParameters"
-    
-    # 字段定义：将 Enum (14) 全部改为 Int32 (5)，这是解决报错的关键
-    # 编号参考: 12=Bytes, 9=String, 5=Int32, 3=Int64
-    fields = [
-        ("secret", 1, 12), 
-        ("name", 2, 9), 
-        ("issuer", 3, 9),
-        ("algorithm", 4, 5), # 改为 Int32
-        ("digits", 5, 5),    # 改为 Int32
-        ("type", 6, 5),      # 改为 Int32
-        ("counter", 7, 3), 
-        ("unique_id", 8, 9)
-    ]
-    for f_name, f_num, f_type in fields:
-        f = inner_msg.field.add()
-        f.name, f.number, f.type = f_name, f_num, f_type
-
-    # 3. 关联主消息字段
-    f = msg.field.add()
-    f.name, f.number, f.label, f.type, f.type_name = "otp_parameters", 1, 3, 11, ".googleauth.MigrationPayload.OtpParameters"
-    
-    # 其他元数据字段
-    for i, f_name in enumerate(["version", "batch_size", "batch_index", "batch_id"], 2):
-        f = msg.field.add()
-        f.name, f.number, f.label, f.type = f_name, i, 1, 5
-
-    # 4. 载入描述符池
-    pool.Add(file_descriptor_proto)
-    return message_factory.GetMessageClass(pool.FindMessageTypeByName('googleauth.MigrationPayload'))
+def _parse_message(data):
+    """简易 Protobuf 逻辑解析器：将二进制流解析为 Tag 字典"""
+    pos = 0
+    res = {}
+    while pos < len(data):
+        tag_and_type, pos = _parse_varint(data, pos)
+        tag = tag_and_type >> 3
+        wire_type = tag_and_type & 0x07
+        
+        if wire_type == 0:  # Varint
+            val, pos = _parse_varint(data, pos)
+        elif wire_type == 2:  # Length-delimited (String/Bytes/Nested)
+            l, pos = _parse_varint(data, pos)
+            val = data[pos:pos+l]
+            pos += l
+        else:
+            raise ValueError(f"Unsupported wire type: {wire_type}")
+        
+        if tag not in res:
+            res[tag] = []
+        res[tag].append(val)
+    return res
 
 def decrypt_google_auth_uri(uri: str) -> List[Dict[str, Any]]:
     """
-    解析 otpauth-migration URI
+    不需要 pb2 文件的 Google 迁移 URI 解析器
     """
     try:
         parsed_uri = urlparse(uri)
-        if parsed_uri.scheme != 'otpauth-migration':
-            raise ValueError("无效的 URI 协议。")
-
         query_params = parse_qs(parsed_uri.query)
-        data_list = query_params.get('data')
-        if not data_list:
-            raise ValueError("URI 中缺失 data 参数。")
-
-        encoded_data = data_list[0]
-        # 自动处理 Base64 填充
-        padding_needed = len(encoded_data) % 4
-        if padding_needed:
-            encoded_data += '=' * (4 - padding_needed)
+        encoded_data = query_params.get('data', [''])[0]
         
-        binary_data = base64.b64decode(encoded_data)
+        # 1. Base64 解码
+        missing_padding = len(encoded_data) % 4
+        if missing_padding:
+            encoded_data += '=' * (4 - missing_padding)
+        binary_payload = base64.b64decode(encoded_data)
 
-        # 动态解析
-        PayloadClass = _get_dynamic_payload_class()
-        payload = PayloadClass()
-        payload.ParseFromString(binary_data)
+        # 2. 解析外层 MigrationPayload
+        # Tag 1: repeated OtpParameters otp_parameters
+        payload_dict = _parse_message(binary_payload)
+        otp_params_list = payload_dict.get(1, [])
 
-        # 映射逻辑（基于 proto3 规范）
-        ALGO_MAP = {0: "UNSPECIFIED", 1: "SHA1", 2: "SHA256", 3: "SHA512", 4: "MD5"}
-        DIGIT_MAP = {0: "UNSPECIFIED", 1: "6", 2: "8", 3: "7"}
-        TYPE_MAP = {0: "UNSPECIFIED", 1: "HOTP", 2: "TOTP"}
-
-        # accounts = []
-        # for otp in payload.otp_parameters:
-        #     # 转换密钥为 Base32
-        #     b32_secret = base64.b32encode(otp.secret).decode('utf-8').rstrip('=')
-            
-        #     accounts.append({
-        #         "issuer": otp.issuer or "Unknown",
-        #         "name": otp.name or "Unknown",
-        #         "totp_secret": b32_secret,
-        #         "algorithm": ALGO_MAP.get(otp.algorithm, "SHA1"),
-        #         "digits": DIGIT_MAP.get(otp.digits, "6"),
-        #         "type": TYPE_MAP.get(otp.type, "TOTP")
-        #     })
+        # 3. 映射表
+        ALGO_MAP = {0: "SHA1", 1: "SHA1", 2: "SHA256", 3: "SHA512", 4: "MD5"}
+        
         accounts = []
-        for otp in payload.otp_parameters:
-            # --- 智能字段解析开始 ---
-            raw_name = otp.name or ""
-            raw_issuer = otp.issuer or ""
+        for raw_otp in otp_params_list:
+            # 解析内层 OtpParameters 消息
+            otp_dict = _parse_message(raw_otp)
             
-            # 逻辑 1：如果 issuer 为空，尝试从 name 中提取（处理 GitHub:user 这种格式）
-            if not raw_issuer and ":" in raw_name:
-                display_issuer = raw_name.split(":", 1)[0].strip()
-                display_name = raw_name.split(":", 1)[1].strip()
-            else:
-                display_issuer = raw_issuer
-                display_name = raw_name
+            # 提取字段 (Tag 对应 .proto 文件中的序号)
+            # 1: secret, 2: name, 3: issuer, 4: algorithm, 5: digits, 6: type
+            secret = otp_dict.get(1, [b''])[0]
+            name = otp_dict.get(2, [b'Unknown'])[0].decode('utf-8')
+            issuer = otp_dict.get(3, [b''])[0].decode('utf-8')
+            algo_idx = otp_dict.get(4, [1])[0]
+            digit_idx = otp_dict.get(5, [1])[0]
 
-            # 逻辑 2：双重回退机制
-            # 如果解析后 issuer 还是空，用 name 补位
-            final_issuer = display_issuer or display_name or "Unknown Issuer"
-            # 如果 name 为空，用 issuer 补位
-            final_name = display_name or display_issuer or "Unknown Account"
+            # 转换 Secret 为 Base32
+            b32_secret = base64.b32encode(secret).decode('utf-8').rstrip('=')
             
-            # 如果两者完全一样（说明数据里只有一个字段），为了美观，我们可以微调
-            if final_issuer == final_name:
-                final_name = "-" # 或者保持原样
-            # --- 智能字段解析结束 ---
+            # 处理 Issuer 逻辑
+            if not issuer and ":" in name:
+                issuer = name.split(":", 1)[0].strip()
+                name = name.split(":", 1)[1].strip()
 
-            b32_secret = base64.b32encode(otp.secret).decode('utf-8').rstrip('=')
-            
             accounts.append({
-                "issuer": final_issuer,
-                "name": final_name,
+                "issuer": issuer or "Unknown",
+                "name": name,
                 "totp_secret": b32_secret,
-                "algorithm": ALGO_MAP.get(otp.algorithm, "SHA1"),
-                "digits": DIGIT_MAP.get(otp.digits, "6"),
-                "type": TYPE_MAP.get(otp.type, "TOTP")
+                "algorithm": ALGO_MAP.get(algo_idx, "SHA1"),
+                "digits": "8" if digit_idx == 2 else "6"
             })
 
         return accounts
     except Exception as e:
-        # 向上传递更清晰的错误信息
-        raise ValueError(str(e))
+        raise ValueError(f"Manual parsing failed: {str(e)}")
