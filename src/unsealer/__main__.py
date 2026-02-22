@@ -15,7 +15,7 @@ except ImportError as e:
     sys.exit(1)
     
 def main():
-    # 1. Create the top-level parser
+    # 1. Create the parser
     parser = argparse.ArgumentParser(
         prog="unsealer",
         description="A powerful, multi-module tool to reclaim your digital credentials.",
@@ -31,8 +31,6 @@ def main():
     )
 
     # 3. Register the 'samsung' command
-    # We don't re-define all the arguments here. We just register the command
-    # and its help text. The actual argument parsing is still done by the submodule.
     subparsers.add_parser(
         "samsung",
         help="Decrypt and export data from Samsung Pass (.spass) backups.",
@@ -45,3 +43,18 @@ def main():
         help="Decrypt and extract 2FA accounts from a Google Authenticator export URI.",
         description="A tool for decrypting Google Authenticator 'otpauth-migration://' URIs."
     )
+
+    # --- Command Dispatching Logic ---
+
+    args = parser.parse_args(sys.argv[1:2])
+
+    if args.command == "samsung":
+        samsung_cli.main()
+    elif args.command == "google":
+        google_cli.main()
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

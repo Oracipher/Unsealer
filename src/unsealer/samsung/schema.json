@@ -1,0 +1,68 @@
+{
+  "logins": {
+    "fingerprint": [
+      "origin_url",
+      "username_value",
+      "password_value"
+    ],
+    "json_fields": [
+      "otp"
+    ],
+    "useful_fields": [
+      "title",
+      "username_value",
+      "password_value",
+      "origin_url",
+      "credential_memo",
+      "otp"
+    ]
+  },
+  "identities": {
+    "fingerprint": [
+      "id_card_detail",
+      "telephone_number_list",
+      "email_address_list"
+    ],
+    "json_fields": [
+      "id_card_detail"
+    ],
+    "multi_b64_fields": [
+      "telephone_number_list",
+      "email_address_list"
+    ],
+    "useful_fields": [
+      "name",
+      "id_card_detail",
+      "telephone_number_list",
+      "email_address_list"
+    ]
+  },
+  "addresses": {
+    "fingerprint": [
+      "full_address",
+      "street_address",
+      "country_code"
+    ],
+    "useful_fields": [
+      "full_name",
+      "company_name",
+      "street_address",
+      "city",
+      "state",
+      "zipcode",
+      "country_code",
+      "phone_number",
+      "email"
+    ]
+  },
+  "notes": {
+    "fingerprint": [
+      "note_title",
+      "note_detail"
+    ],
+    "useful_fields": [
+      "note_title",
+      "note_detail"
+    ]
+  }
+}

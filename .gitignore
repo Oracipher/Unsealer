@@ -4,3 +4,7 @@
 
 draft/
 
+*.spass
+
+env/
+.env
