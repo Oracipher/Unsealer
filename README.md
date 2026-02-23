@@ -1,6 +1,8 @@
 # unsealer
 
 > PyPI hasn't been updated yet. I will delete this sentence when I update it.
+>
+> At the same time, I've decided to archive this repository and rewrite its contents before moving it to another repository: ![Vespera](https://github.com/ChaseanChen/Vespera)
 
 [![PyPI Version](https://img.shields.io/badge/pypi-v0.2.0-blue)](https://pypi.org/project/unsealer-samsung/)
 [![Python Versions](https://img.shields.io/badge/python-3.7+-brightgreen.svg)](https://www.python.org/downloads/)
